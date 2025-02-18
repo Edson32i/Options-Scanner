@@ -766,7 +766,9 @@ def save_scheduled_results(timestamp, ic_count, vs_count, bc_count):
         df.to_csv(file_path, index=False)
 
 def scheduled_scan():
-    logging.info("Starting scheduled scan...")
+    # Create and set a new event loop in this thread.
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     token = tastytrade_login()
     if not token:
         logging.error("Scheduled scan: authentication failed.")
@@ -777,21 +779,22 @@ def scheduled_scan():
         scr = st.session_state.get("scheduled_min_credit_ratio", 0.10)
         swf = st.session_state.get("scheduled_spread_width_factor", 0.2)
         efilt = st.session_state.get("scheduled_earnings_filter", "No Filter")
-
-        accepted_ic, _ = asyncio.run(async_find_iron_condors(token, sd, sp, scr, efilt))
-        accepted_vs, _ = asyncio.run(async_find_vertical_spreads(token, sd, sp, scr, swf, efilt))
-        accepted_bc, _ = asyncio.run(async_find_bear_call_spreads(token, sd, sp, scr, swf, efilt))
-
+        
+        accepted_ic, _ = loop.run_until_complete(async_find_iron_condors(token, sd, sp, scr, efilt))
+        accepted_vs, _ = loop.run_until_complete(async_find_vertical_spreads(token, sd, sp, scr, swf, efilt))
+        accepted_bc, _ = loop.run_until_complete(async_find_bear_call_spreads(token, sd, sp, scr, swf, efilt))
+        
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M EST")
-        msg = (f"Scheduled Scan at {timestamp}: "
-               f"Iron Condor: {len(accepted_ic)} trades, "
-               f"Vertical Spread: {len(accepted_vs)} trades, "
-               f"Bear Call Spread: {len(accepted_bc)} trades.")
+        msg = (f"Scheduled Scan at {timestamp}: Iron Condor: {len(accepted_ic)} trades, "
+               f"Vertical Spread: {len(accepted_vs)} trades, Bear Call Spread: {len(accepted_bc)} trades.")
         logging.info(msg)
         send_text_alert(msg)
         save_scheduled_results(timestamp, len(accepted_ic), len(accepted_vs), len(accepted_bc))
     except Exception as e:
         logging.error("Scheduled scan error: %s", e)
+    finally:
+        loop.close()
+
 
 # -----------------------------------------------------------------------------
 # Streamlit UI
