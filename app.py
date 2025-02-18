@@ -31,6 +31,27 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 TASTYTRADE_API_URL = "https://api.tastytrade.com"
 USERNAME = os.getenv("TASTYTRADE_USERNAME")
 PASSWORD = os.getenv("TASTYTRADE_PASSWORD")
+def tastytrade_login():
+    import requests
+    url = f"{TASTYTRADE_API_URL}/sessions"
+    payload = {"login": USERNAME, "password": PASSWORD}
+    try:
+        response = requests.post(url, json=payload, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        print("Login response:", data)  # Debug print to check structure
+        # Adjust the key if necessary:
+        token = data["data"].get("token") or data["data"].get("access_token")
+        if token:
+            logging.info("Login successful.")
+            return token
+        else:
+            logging.error("Token not found in response: %s", data)
+            return None
+    except Exception as e:
+        logging.error("Login error: %s", e)
+        return None
+
 EMAIL_SENDER = os.getenv("EMAIL_SENDER")
 EMAIL_RECEIVER = os.getenv("EMAIL_RECEIVER")
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
