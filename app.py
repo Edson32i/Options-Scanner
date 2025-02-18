@@ -234,9 +234,10 @@ async def async_get_available_tickers(token, session):
     url = f"{TASTYTRADE_API_URL}/markets/options/available-tickers"
     headers = {"Authorization": f"Bearer {token}"}
     async with session.get(url, headers=headers, timeout=10) as response:
-        data = await response.json()
+        data = await response.json(content_type=None)
         tickers = [item.get("symbol") for item in data.get("data", []) if "symbol" in item]
         return tickers
+
 
 async def async_get_options_chain(symbol, token, session):
     if symbol in options_chain_cache:
