@@ -213,9 +213,9 @@ def tastytrade_login():
         response = requests.post(url, json=payload, timeout=10)
         response.raise_for_status()
         data = response.json()
-        print("Login response:", data)  # Debug: Remove or comment out after confirming structure.
-        # Try to get the token from either "token" or "access_token"
-        token = data["data"].get("token") or data["data"].get("access_token")
+        print("Login response:", data)  # Debug print
+        # Try to get the token from "token", "access_token", or "session-token"
+        token = data["data"].get("token") or data["data"].get("access_token") or data["data"].get("session-token")
         if token:
             logging.info("Login successful.")
             return token
@@ -225,6 +225,7 @@ def tastytrade_login():
     except Exception as e:
         logging.error("Login error: %s", e)
         return None
+
 
 # -----------------------------------------------------------------------------
 # Asynchronous API Helpers
