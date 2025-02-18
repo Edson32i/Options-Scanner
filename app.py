@@ -422,11 +422,6 @@ elif earnings_filter == "After Expiration":
     if earnings_date is not None and earnings_date <= expiration_date:
         effective_pop = 0
 
-    elif earnings_filter == "After Expiration":
-        # Reject if earnings_date <= expiration_date
-        if earnings_date is None or earnings_date <= expiration_date:
-            pop = 0
-
     reasons = []
     if pop < pop_threshold:
         reasons.append("Effective POP too low")
