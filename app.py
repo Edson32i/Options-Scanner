@@ -344,7 +344,8 @@ async def async_process_ticker_iron(symbol, token, days_out, pop_threshold, min_
         upper_effective = upper_strike - STOP_LOSS_MULTIPLIER * credit_received
         T_years = days_out / 365.0
         r = 0.01
-        effective_pop = improved_pop_estimate(price, lower_effective, upper_effective, T_years, iv, r)[0]
+        effective_pop = theoretical_pop
+
     else:
         adjusted_scale = expected_move * 1.2
         prob_lower = norm.cdf(lower_strike, loc=price, scale=adjusted_scale)
