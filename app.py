@@ -846,4 +846,26 @@ elif mode == "Scan All Tickers":
             if strategy == "Iron Condor":
                 accepted_df, rejected_df = asyncio.run(async_find_iron_condors(token, days_out, pop_threshold, min_credit_ratio, earnings_filter_option))
             elif strategy == "Vertical Spread":
-   
+                accepted_df, rejected_df = asyncio.run(async_find_vertical_spreads(token, days_out, pop_threshold, min_credit_ratio, spread_width_factor, earnings_filter_option))
+            else:
+                accepted_df, rejected_df = asyncio.run(async_find_bear_call_spreads(token, days_out, pop_threshold, min_credit_ratio, spread_width_factor, earnings_filter_option))
+            st.write("Scanning completed.")
+            if not accepted_df.empty:
+                st.success(f"Found {len(accepted_df)} potential {strategy} trades.")
+                for idx, trade_row in accepted_df.iterrows():
+                    with st.expander(f"{trade_row['Ticker']} - {trade_row['Strategy']} (Index: {idx})"):
+                        st.write(trade_row)
+                        chart = generate_payoff_chart(trade_row)
+                        if chart:
+                            st.altair_chart(chart, use_container_width=True)
+                send_text_alert(f"Scan complete: {len(accepted_df)} potential {strategy} trades found.")
+            else:
+                st.warning("No promising trades were found with the current parameters.")
+            if not rejected_df.empty:
+                st.write("Some trades were rejected:")
+                st.dataframe(rejected_df)
+        else:
+            st.error("Authentication failed.")
+
+else:  # Backtest & Optimize (placeholder)
+    st.write("Backtest & Optimize mode is not fully implemented in this snippet.")
