@@ -231,20 +231,26 @@ def tastytrade_login():
 # Asynchronous API Helpers
 # -----------------------------------------------------------------------------
 async def async_get_available_tickers(token, session):
-    url = f"{TASTYTRADE_API_URL}/markets/options/available-tickers"
+    # Use the active equities endpoint from Tastyworks.
+    url = "https://api.tastyworks.com/instruments/equities/active?per-page=5000"
     headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
     async with session.get(url, headers=headers, timeout=10) as response:
         text = await response.text()
         if not text.strip():
             logging.error("Received an empty response from the API.")
             raise Exception("Empty response from API.")
+        if text.strip().startswith("<html"):
+            logging.error("Received HTML response instead of JSON: %s", text)
+            raise Exception("Endpoint returned HTML error (likely 404 Not Found). Check URL and API access.")
         try:
             data = await response.json(content_type=None)
         except Exception as e:
             logging.error("Error parsing JSON: %s; response text: %s", e, text)
             raise e
-        tickers = [item.get("symbol") for item in data.get("data", []) if "symbol" in item]
+        # The active equities endpoint returns an array of equity objects.
+        tickers = [item.get("symbol") for item in data if "symbol" in item]
         return tickers
+
 
 
 
