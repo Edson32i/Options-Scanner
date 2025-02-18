@@ -1,0 +1,10 @@
+streamlit
+aiohttp
+cachetools
+twilio
+apscheduler
+yfinance
+altair
+pandas
+numpy
+scipy
