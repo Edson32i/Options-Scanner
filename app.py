@@ -845,5 +845,5 @@ elif mode == "Scan All Tickers":
             st.write(f"Scanning all tickers for {strategy} with earnings filter: {earnings_filter_option}")
             if strategy == "Iron Condor":
                 accepted_df, rejected_df = asyncio.run(async_find_iron_condors(token, days_out, pop_threshold, min_credit_ratio, earnings_filter_option))
-        elif strategy == "Vertical Spread":
+    elif strategy == "Vertical Spread":
    
