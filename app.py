@@ -318,6 +318,8 @@ async def async_process_ticker_iron(symbol, token, days_out, pop_threshold, min_
     expected_move = calculate_expected_move(price, iv, days_out)
     lower_strike = round(price - expected_move, 2)
     upper_strike = round(price + expected_move, 2)
+    st.write(f"{symbol} - Expected Move: {expected_move}, Lower Strike: {lower_strike}, Upper Strike: {upper_strike}")
+    logging.info(f"{symbol} - Expected Move: {expected_move}, Lower Strike: {lower_strike}, Upper Strike: {upper_strike}")
 
     try:
         bid_ask_put = await async_get_bid_ask_spread(symbol, lower_strike, "put", token, session)
@@ -351,6 +353,9 @@ async def async_process_ticker_iron(symbol, token, days_out, pop_threshold, min_
         prob_lower = norm.cdf(lower_strike, loc=price, scale=adjusted_scale)
         prob_upper = norm.cdf(upper_strike, loc=price, scale=adjusted_scale)
         effective_pop = round((prob_upper - prob_lower) * 100, 2)
+        st.write(f"{symbol} - Theoretical POP: {theoretical_pop}")
+        logging.info(f"{symbol} - Theoretical POP: {theoretical_pop}")
+
 
     effective_ev = calculate_ev(credit_received, effective_loss, effective_pop)
     effective_risk_reward = calculate_risk_reward(credit_received, effective_loss)
@@ -368,6 +373,10 @@ async def async_process_ticker_iron(symbol, token, days_out, pop_threshold, min_
             earnings_date = earnings.date()
         except Exception:
             earnings_date = None
+    else:
+        earnings_date = None
+st.write(f"{symbol} - Earnings Date: {earnings_date}, Expiration Date: {expiration_date}")
+logging.info(f"{symbol} - Earnings Date: {earnings_date}, Expiration Date: {expiration_date}")
 
     if earnings_filter == "Before Expiration":
         if earnings_date is not None and earnings_date >= expiration_date:
