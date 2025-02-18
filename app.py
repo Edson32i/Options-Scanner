@@ -51,7 +51,7 @@ bid_ask_cache = TTLCache(maxsize=5000, ttl=300)
 MIN_UNDERLYING_VOLUME = 1000000   # Minimum 1 million daily volume
 MIN_STRIKES_COUNT = 12            # At least 12 strikes available
 MAX_SPREAD_PCT = 0.05             # Maximum 5% bid/ask spread (relative to mid)
-STOP_LOSS_MULTIPLIER = 2.0        # Effective loss is capped at 200% of credit received
+STOP_LOSS_MULTIPLIER = 2.0        # Effective max loss capped at 200% of credit
 
 # -----------------------------------------------------------------------------
 # Black-Scholes Delta & Net Delta (for Iron Condor)
@@ -112,7 +112,7 @@ def get_next_earnings(ticker):
         return None
 
 # -----------------------------------------------------------------------------
-# Payoff Functions (Pure at-expiration payoff)
+# Payoff Functions (Pure At-Expiration)
 # -----------------------------------------------------------------------------
 def payoff_iron_condor(prices, lower_put, upper_call, net_credit):
     payoffs = []
@@ -179,7 +179,7 @@ def generate_payoff_chart(row):
     return chart
 
 # -----------------------------------------------------------------------------
-# Synchronous Login Function (with token from 'session-token')
+# Synchronous Login Function (with updated token key)
 # -----------------------------------------------------------------------------
 def tastytrade_login():
     import requests
@@ -201,10 +201,10 @@ def tastytrade_login():
         return None
 
 # -----------------------------------------------------------------------------
-# Asynchronous API Functions using aiohttp with Debugging
+# Asynchronous API Functions using aiohttp (with debugging)
 # -----------------------------------------------------------------------------
 async def async_get_available_tickers(token, session):
-    # Using the active equities endpoint per Tastyworks documentation.
+    # Use the active equities endpoint from Tastyworks
     url = "https://api.tastyworks.com/instruments/equities/active?per-page=5000"
     headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
     async with session.get(url, headers=headers, timeout=10) as response:
@@ -214,7 +214,7 @@ async def async_get_available_tickers(token, session):
             raise Exception("Empty response from API.")
         if text.strip().startswith("<html"):
             logging.error("Received HTML response instead of JSON: %s", text)
-            raise Exception("Endpoint returned HTML error (likely 404 Not Found). Check URL and API access.")
+            raise Exception("Endpoint returned HTML error (likely 404).")
         try:
             data = await response.json(content_type=None)
         except Exception as e:
@@ -291,7 +291,7 @@ async def limited_process_bear(symbol, token, days_out, pop_threshold, min_credi
         return await async_process_ticker_bear_call(symbol, token, days_out, pop_threshold, min_credit_ratio, session, spread_width_factor, earnings_filter)
 
 # -----------------------------------------------------------------------------
-# Asynchronous Processing for Iron Condors (with Liquidity, Improved POP, Net Delta, Earnings Filter)
+# Asynchronous Processing for Iron Condors with Debugging (including Earnings Filter)
 # -----------------------------------------------------------------------------
 async def async_process_ticker_iron(symbol, token, days_out, pop_threshold, min_credit_ratio, session, earnings_filter="No Filter"):
     try:
@@ -315,6 +315,7 @@ async def async_process_ticker_iron(symbol, token, days_out, pop_threshold, min_
     if len(strikes_list) < MIN_STRIKES_COUNT:
         return None, {"Ticker": symbol, "Rejection Reason": "Less than 12 strikes available"}
 
+    # Compute expected move and strike levels, and log them:
     expected_move = calculate_expected_move(price, iv, days_out)
     lower_strike = round(price - expected_move, 2)
     upper_strike = round(price + expected_move, 2)
@@ -346,16 +347,18 @@ async def async_process_ticker_iron(symbol, token, days_out, pop_threshold, min_
         upper_effective = upper_strike - STOP_LOSS_MULTIPLIER * credit_received
         T_years = days_out / 365.0
         r = 0.01
-        effective_pop = theoretical_pop
-
+        effective_pop = improved_pop_estimate(price, lower_effective, upper_effective, T_years, iv, r)[0]
     else:
         adjusted_scale = expected_move * 1.2
         prob_lower = norm.cdf(lower_strike, loc=price, scale=adjusted_scale)
         prob_upper = norm.cdf(upper_strike, loc=price, scale=adjusted_scale)
         effective_pop = round((prob_upper - prob_lower) * 100, 2)
-        st.write(f"{symbol} - Theoretical POP: {theoretical_pop}")
-        logging.info(f"{symbol} - Theoretical POP: {theoretical_pop}")
 
+    # Log theoretical and effective POP before earnings filter:
+    st.write(f"{symbol} - Theoretical POP: {round((norm.cdf(upper_strike, loc=price, scale=adjusted_scale) - norm.cdf(lower_strike, loc=price, scale=adjusted_scale))*100, 2)}")
+    st.write(f"{symbol} - Effective POP before earnings filter: {effective_pop}")
+    logging.info(f"{symbol} - Theoretical POP: {round((norm.cdf(upper_strike, loc=price, scale=adjusted_scale) - norm.cdf(lower_strike, loc=price, scale=adjusted_scale))*100, 2)}")
+    logging.info(f"{symbol} - Effective POP before earnings filter: {effective_pop}")
 
     effective_ev = calculate_ev(credit_received, effective_loss, effective_pop)
     effective_risk_reward = calculate_risk_reward(credit_received, effective_loss)
@@ -365,9 +368,9 @@ async def async_process_ticker_iron(symbol, token, days_out, pop_threshold, min_
     r = 0.01
     net_delta = calculate_net_delta_iron_condor(price, lower_strike, upper_strike, T_years, iv, r)
 
-    earnings = await asyncio.to_thread(get_next_earnings, symbol)
+    # Retrieve earnings and expiration; log them
     expiration_date = (datetime.now() + timedelta(days=days_out)).date()
-    earnings_date = None
+    earnings = await asyncio.to_thread(get_next_earnings, symbol)
     if earnings is not None:
         try:
             earnings_date = earnings.date()
@@ -375,9 +378,10 @@ async def async_process_ticker_iron(symbol, token, days_out, pop_threshold, min_
             earnings_date = None
     else:
         earnings_date = None
-st.write(f"{symbol} - Earnings Date: {earnings_date}, Expiration Date: {expiration_date}")
-logging.info(f"{symbol} - Earnings Date: {earnings_date}, Expiration Date: {expiration_date}")
+    st.write(f"{symbol} - Earnings Date: {earnings_date}, Expiration Date: {expiration_date}")
+    logging.info(f"{symbol} - Earnings Date: {earnings_date}, Expiration Date: {expiration_date}")
 
+    # Earnings Filter: Only force effective_pop=0 if earnings date is available and condition met
     if earnings_filter == "Before Expiration":
         if earnings_date is not None and earnings_date >= expiration_date:
             logging.info(f"{symbol}: Earnings date {earnings_date} is on or after expiration {expiration_date}; rejecting trade.")
@@ -386,6 +390,9 @@ logging.info(f"{symbol} - Earnings Date: {earnings_date}, Expiration Date: {expi
         if earnings_date is not None and earnings_date <= expiration_date:
             logging.info(f"{symbol}: Earnings date {earnings_date} is on or before expiration {expiration_date}; rejecting trade.")
             effective_pop = 0
+
+    st.write(f"{symbol} - Effective POP after earnings filter: {effective_pop}")
+    logging.info(f"{symbol} - Effective POP after earnings filter: {effective_pop}")
 
     reasons = []
     if effective_pop < pop_threshold:
@@ -421,7 +428,7 @@ logging.info(f"{symbol} - Earnings Date: {earnings_date}, Expiration Date: {expi
     return result, None
 
 # -----------------------------------------------------------------------------
-# Asynchronous Processing for Vertical Spreads (Bull Put) with Earnings Filter
+# Asynchronous Processing for Vertical Spreads with Earnings Filter
 # -----------------------------------------------------------------------------
 async def async_process_ticker_vertical(symbol, token, days_out, pop_threshold, min_credit_ratio, session, spread_width_factor=0.2, earnings_filter="No Filter"):
     try:
@@ -473,8 +480,7 @@ async def async_process_ticker_vertical(symbol, token, days_out, pop_threshold, 
     r = 0.01
     if STOP_LOSS_MULTIPLIER * credit_received < theoretical_max_loss:
         effective_stop = sold_put_strike + STOP_LOSS_MULTIPLIER * credit_received
-        pop_val = improved_pop_estimate(price, effective_stop, price*10, T_years, iv, r)
-        pop_calc = pop_val
+        pop_calc = improved_pop_estimate(price, effective_stop, price * 10, T_years, iv, r)
     else:
         adjusted_scale = expected_move * 1.2
         pop_calc = round((1 - norm.cdf(sold_put_strike, loc=price, scale=adjusted_scale)) * 100, 2)
@@ -533,7 +539,7 @@ async def async_process_ticker_vertical(symbol, token, days_out, pop_threshold, 
     return result, None
 
 # -----------------------------------------------------------------------------
-# Asynchronous Processing for Bear Call Spreads with Improved POP, Liquidity Checks, and Earnings Filter
+# Asynchronous Processing for Bear Call Spreads with Earnings Filter
 # -----------------------------------------------------------------------------
 async def async_process_ticker_bear_call(symbol, token, days_out, pop_threshold, min_credit_ratio, session,
                                          spread_width_factor=0.2, earnings_filter="No Filter"):
@@ -645,7 +651,7 @@ async def async_process_ticker_bear_call(symbol, token, days_out, pop_threshold,
     return result, None
 
 # -----------------------------------------------------------------------------
-# Orchestrators for Scanning All Tickers with Concurrency Limiting and Earnings Filter
+# Orchestrators for Scanning All Tickers with Concurrency Limiting & Earnings Filter
 # -----------------------------------------------------------------------------
 async def async_find_iron_condors(token, days_out, pop_threshold, min_credit_ratio, earnings_filter):
     async with aiohttp.ClientSession() as session:
@@ -702,7 +708,7 @@ async def async_find_bear_call_spreads(token, days_out, pop_threshold, min_credi
     return pd.DataFrame(accepted), pd.DataFrame(rejected)
 
 # -----------------------------------------------------------------------------
-# Scheduled Scanning: Save Results & Send Text Alerts
+# Scheduled Scanning (Saves Results & Sends Text Alerts)
 # -----------------------------------------------------------------------------
 def save_scheduled_results(timestamp, ic_count, vs_count, bc_count):
     df = pd.DataFrame({
@@ -742,10 +748,10 @@ def scheduled_scan():
         logging.error("Scheduled scan error: %s", e)
 
 # -----------------------------------------------------------------------------
-# Streamlit User Interface
+# Streamlit UI
 # -----------------------------------------------------------------------------
 st.title("Tastytrade Option Scanner with Liquidity, Improved POP, Earnings, & Payoff Charts")
-st.write("This app scans for option-selling opportunities using Tastytrade data. It applies liquidity filters, improved POP estimates, retrieves the next earnings date, allows filtering by earnings timing relative to expiration, and displays a pure payoff chart when you click a result.")
+st.write("This app scans for option-selling opportunities using Tastyworks data. It applies liquidity filters, improved POP estimates, retrieves the next earnings date, allows filtering by earnings timing relative to expiration, and displays a pure payoff chart when you click a result.")
 
 # Earnings Timing Filter Option
 earnings_filter_option = st.sidebar.selectbox(
@@ -840,26 +846,4 @@ elif mode == "Scan All Tickers":
             if strategy == "Iron Condor":
                 accepted_df, rejected_df = asyncio.run(async_find_iron_condors(token, days_out, pop_threshold, min_credit_ratio, earnings_filter_option))
             elif strategy == "Vertical Spread":
-                accepted_df, rejected_df = asyncio.run(async_find_vertical_spreads(token, days_out, pop_threshold, min_credit_ratio, spread_width_factor, earnings_filter_option))
-            else:
-                accepted_df, rejected_df = asyncio.run(async_find_bear_call_spreads(token, days_out, pop_threshold, min_credit_ratio, spread_width_factor, earnings_filter_option))
-            st.write("Scanning completed.")
-            if not accepted_df.empty:
-                st.success(f"Found {len(accepted_df)} potential {strategy} trades.")
-                for idx, trade_row in accepted_df.iterrows():
-                    with st.expander(f"{trade_row['Ticker']} - {trade_row['Strategy']} (Index: {idx})"):
-                        st.write(trade_row)
-                        chart = generate_payoff_chart(trade_row)
-                        if chart:
-                            st.altair_chart(chart, use_container_width=True)
-                send_text_alert(f"Scan complete: {len(accepted_df)} potential {strategy} trades found.")
-            else:
-                st.warning("No promising trades were found with the current parameters.")
-            if not rejected_df.empty:
-                st.write("Some trades were rejected:")
-                st.dataframe(rejected_df)
-        else:
-            st.error("Authentication failed.")
-
-else:  # Backtest & Optimize (placeholder)
-    st.write("Backtest & Optimize mode is not fully implemented in this snippet.")
+   
