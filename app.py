@@ -204,27 +204,35 @@ def tastytrade_login():
 # Asynchronous API Functions using aiohttp (with debugging)
 # -----------------------------------------------------------------------------
 async def async_get_available_tickers(token, session):
-    # Use the active equities endpoint from Tastyworks
     url = "https://api.tastyworks.com/instruments/equities/active?per-page=5000"
     headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
     async with session.get(url, headers=headers, timeout=10) as response:
         text = await response.text()
+        logging.info("Raw ticker response: %s", text)  # Log the raw response
         if not text.strip():
             logging.error("Received an empty response from the API.")
             raise Exception("Empty response from API.")
         if text.strip().startswith("<html"):
             logging.error("Received HTML response instead of JSON: %s", text)
-            raise Exception("Endpoint returned HTML error (likely 404).")
+            raise Exception("Endpoint returned HTML error (likely 404 Not Found). Check URL and API access.")
         try:
             data = await response.json(content_type=None)
         except Exception as e:
             logging.error("Error parsing JSON: %s; response text: %s", e, text)
             raise e
-        tickers = [item.get("symbol") for item in data if "symbol" in item]
-        st.write(f"Retrieved {len(tickers)} tickers")
-        logging.info(f"Retrieved {len(tickers)} tickers")
-
+        
+        logging.info("Parsed JSON data: %s", data)
+        # Check whether data is a list or a dict
+        if isinstance(data, list):
+            tickers = [item.get("symbol") for item in data if "symbol" in item]
+        elif isinstance(data, dict):
+            tickers = [item.get("symbol") for item in data.get("data", []) if "symbol" in item]
+        else:
+            tickers = []
+        
+        logging.info("Retrieved %d tickers.", len(tickers))
         return tickers
+
 
 async def async_get_options_chain(symbol, token, session):
     if symbol in options_chain_cache:
