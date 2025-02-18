@@ -370,12 +370,12 @@ async def async_process_ticker_iron(symbol, token, days_out, pop_threshold, min_
 
     if earnings_filter == "Before Expiration":
         if earnings_date is not None and earnings_date >= expiration_date:
-        logging.info(f"{symbol}: Earnings date {earnings_date} is on or after expiration {expiration_date}; rejecting trade.")
-        effective_pop = 0
+            logging.info(f"{symbol}: Earnings date {earnings_date} is on or after expiration {expiration_date}; rejecting trade.")
+            effective_pop = 0
     elif earnings_filter == "After Expiration":
         if earnings_date is not None and earnings_date <= expiration_date:
-        logging.info(f"{symbol}: Earnings date {earnings_date} is on or before expiration {expiration_date}; rejecting trade.")
-        effective_pop = 0
+            logging.info(f"{symbol}: Earnings date {earnings_date} is on or before expiration {expiration_date}; rejecting trade.")
+            effective_pop = 0
 
     reasons = []
     if effective_pop < pop_threshold:
