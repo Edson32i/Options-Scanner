@@ -234,14 +234,18 @@ async def async_get_available_tickers(token, session):
     url = f"{TASTYTRADE_API_URL}/markets/options/available-tickers"
     headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
     async with session.get(url, headers=headers, timeout=10) as response:
+        text = await response.text()
+        if not text.strip():
+            logging.error("Received an empty response from the API.")
+            raise Exception("Empty response from API.")
         try:
             data = await response.json(content_type=None)
         except Exception as e:
-            text = await response.text()
             logging.error("Error parsing JSON: %s; response text: %s", e, text)
             raise e
         tickers = [item.get("symbol") for item in data.get("data", []) if "symbol" in item]
         return tickers
+
 
 
 
