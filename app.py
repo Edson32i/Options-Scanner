@@ -221,6 +221,9 @@ async def async_get_available_tickers(token, session):
             logging.error("Error parsing JSON: %s; response text: %s", e, text)
             raise e
         tickers = [item.get("symbol") for item in data if "symbol" in item]
+        st.write(f"Retrieved {len(tickers)} tickers")
+        logging.info(f"Retrieved {len(tickers)} tickers")
+
         return tickers
 
 async def async_get_options_chain(symbol, token, session):
